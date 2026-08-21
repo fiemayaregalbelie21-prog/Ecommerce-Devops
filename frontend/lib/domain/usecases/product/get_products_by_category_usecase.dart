@@ -1,0 +1,12 @@
+import '../../entities/product.dart';
+import '../../repositories/product_repository.dart';
+
+class GetProductsByCategoryUseCase {
+  GetProductsByCategoryUseCase(this._repository);
+
+  final ProductRepository _repository;
+
+  Future<List<Product>> call(String category) {
+    return _repository.getProductsByCategory(category);
+  }
+}

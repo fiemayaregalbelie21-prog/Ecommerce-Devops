@@ -1,0 +1,1 @@
+backend/node_modules/ frontend/.dart_tool/ frontend/build/ frontend/.idea/ *.log .env .env.local
