@@ -1,5 +1,7 @@
 # E-Commerce App — DevOps Setup
 
+**Repository:** https://github.com/fiemayaregalbelie21-prog/Ecommerce-Devops 
+
 This repo contains the DevOps wrapper around the Flutter e-commerce app (built against
 [FakeStoreAPI](https://fakestoreapi.com)), plus a small companion Node.js/Postgres
 backend added specifically to satisfy the assignment's multi-container requirement.
@@ -111,7 +113,7 @@ context keeps the image smaller and the build faster, since Docker doesn't need 
 and send those files to the daemon.
 
 ## Publishing to Docker Hub (Step 5)
-
+**Live image:** https://hub.docker.com/repository/docker/fiemayaregalbelie21/ecommerce-backend
 Manual:
 ```bash
 docker login
