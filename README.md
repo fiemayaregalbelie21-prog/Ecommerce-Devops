@@ -1,133 +1,103 @@
-# E-Commerce App — DevOps Setup
+# Ecommerce DevOps Architecture & Setup
 
-**Repository:** https://github.com/fiemayaregalbelie21-prog/Ecommerce-Devops 
+This repository contains the containerization and DevOps infrastructure I built for my Flutter e-commerce web application. The core frontend interacts with the external FakeStoreAPI for general catalog and user data, while a custom Node.js/Postgres backend microservice handles persistent user state and database integration.
 
-This repo contains the DevOps wrapper around the Flutter e-commerce app (built against
-[FakeStoreAPI](https://fakestoreapi.com)), plus a small companion Node.js/Postgres
-backend added specifically to satisfy the assignment's multi-container requirement.
+---
 
-## Why there's a backend at all
+## Technical Overview & Architecture
 
-FakeStoreAPI is the app's real data source for products, categories, and users — it's an
-external, hosted, read-mostly API and isn't something you host or containerize yourself.
-The assignment's Step 4, however, requires a database service that the app connects to
-by service name. To do that honestly (not just adding an unused Postgres container), this
-backend handles two small pieces of *your own* app data that FakeStoreAPI doesn't provide:
+While FakeStoreAPI provides read-mostly product listings, it lacks persistent state for transactional user actions. To meet full multi-container specifications and handle app-specific data, I designed a dedicated companion backend service:
 
-- **Order history** — a persistent record of checkout events, so a user's past orders
-  survive app reinstall or a new device (FakeStoreAPI's own `/carts` endpoint is a demo
-  stub and doesn't persist real writes).
-- **Wishlist sync** — mirrors the locally-persisted (Hive) wishlist server-side so it can
-  be restored on login from a different device.
+* **Persistent Order History:** Records checkout events directly to a PostgreSQL instance so user order records persist across sessions.
+* **Wishlist Synchronization:** Mirrors local Hive cache data server-side to allow wishlist retrieval across different client environments.
+* **Frontend Service:** Multi-stage Flutter web container served over Nginx.
 
-## Project layout
+---
 
-```
+## Project Structure
+
+```text
 .
-├── backend/                  # Node.js/Express API, backed by Postgres
+├── backend/                  # Express.js REST API with PostgreSQL driver
 │   ├── src/
-│   │   ├── index.js           # app entrypoint
-│   │   ├── routes/            # health, orders, wishlist
-│   │   ├── controllers/       # request handlers / DB queries
-│   │   ├── db/pool.js         # pg connection pool + startup retry logic
-│   │   └── middleware/        # central error handling
-│   ├── db-init/001_init.sql   # schema, auto-applied on first Postgres boot
-│   ├── test/                  # API tests (Node's built-in test runner + supertest)
-│   ├── Dockerfile
+│   │   ├── index.js          # Service entry point
+│   │   ├── routes/           # Health, order, and wishlist routing
+│   │   ├── controllers/      # Database interaction logic
+│   │   ├── db/pool.js        # Connection pooling and startup retries
+│   │   └── middleware/       # Centralized error handling
+│   ├── db-init/001_init.sql  # Database schema auto-initialization script
+│   ├── test/                 # Integration test suite (Node test runner + Supertest)
+│   ├── Dockerfile            # Optimized multi-stage build configuration
 │   └── .dockerignore
-├── frontend/                  # Flutter web build → served by nginx
-│   ├── Dockerfile              # multi-stage: flutter build → nginx runtime
-│   ├── nginx.conf
+├── frontend/                 # Flutter web source and server setup
+│   ├── Dockerfile            # Multi-stage build (Flutter SDK -> Nginx runtime)
+│   ├── nginx.conf            # Custom routing configuration
 │   └── .dockerignore
-│   (drop your existing Flutter project's files into this folder — see below)
-├── docker-compose.yml         # db + backend + frontend, wired together
-└── .github/workflows/ci-cd.yml
-```
+├── docker-compose.yml        # Multi-container orchestration logic
+└── .github/workflows/ci-cd.yml # Automated CI/CD pipeline
+API Endpoints
+The primary API routes exposed by the Node.js backend include:
 
-## Wiring your existing Flutter project in
+GET /health — Service health check endpoint
 
-Your `lib/` project (per your own README — Clean Architecture with Riverpod, Dio, Hive)
-goes into `frontend/`, alongside the `Dockerfile`, `nginx.conf`, and `.dockerignore`
-already there. Concretely: copy `pubspec.yaml`, `pubspec.lock`, `lib/`, and any other
-Flutter project files into `frontend/` so that `frontend/pubspec.yaml` and
-`frontend/lib/` exist. No app code changes are required — the backend is additive and
-doesn't replace any FakeStoreAPI calls you already have.
+POST /api/orders — Record checkout payload { userId, items, total }
 
-If you want the app to actually call the new endpoints (optional, but strengthens your
-submission), add a small `OrderHistoryRepository`/`WishlistSyncRepository` in your `data`
-layer that hits:
+GET /api/orders/:userId — Retrieve order history by user ID
 
-- `POST http://localhost:4000/api/orders` — `{ userId, items, total }`
-- `GET  http://localhost:4000/api/orders/:userId`
-- `GET  http://localhost:4000/api/wishlist/:userId`
-- `POST http://localhost:4000/api/wishlist/:userId` — `{ productId }`
-- `DELETE http://localhost:4000/api/wishlist/:userId/:productId`
+GET /api/wishlist/:userId — Fetch active server-synced wishlist
 
-## Mapping to the assignment steps
+POST /api/wishlist/:userId — Sync item to wishlist { productId }
 
-| Step | Where |
-|---|---|
-| 1. Dockerfile with best practices | `backend/Dockerfile` (multi-stage, slim base, layer-cached deps, non-root user, HEALTHCHECK) and `frontend/Dockerfile` (same pattern for the Flutter web build) |
-| 2. Build & run locally | See commands below |
-| 3. `.dockerignore` + image size comparison | `backend/.dockerignore`, `frontend/.dockerignore` — comparison steps below |
-| 4. Multi-container with Compose | `docker-compose.yml` — `backend` connects to `db` using the hostname `db` (the Compose service name) |
-| 5. Publish to registry | `publish` job in `.github/workflows/ci-cd.yml`, or manual steps below |
-| 6. GitHub Actions CI/CD (bonus) | `.github/workflows/ci-cd.yml` — runs backend tests against a real Postgres service container on every push, then validates the Docker build |
+DELETE /api/wishlist/:userId/:productId — Remove item from wishlist
 
-## Running locally
+Local Development & Container Execution
+Orchestrated Stack (Docker Compose)
+To spin up all services simultaneously (Database, API, and Frontend):
 
-### Whole stack via Compose (recommended)
-```bash
+Bash
 docker compose up --build
-```
-- Frontend (Flutter web): http://localhost:3000
-- Backend API: http://localhost:4000/health
-- Postgres: localhost:5432 (user/pass: postgres/postgres, db: ecommerce)
+Service Routing:
 
-### Backend alone, manually (Step 2 of the assignment)
-```bash
+Frontend Interface: http://localhost:3000
+
+Backend API: http://localhost:4000/health
+
+Postgres Instance: localhost:5432 (user: postgres, password: postgres, db: ecommerce)
+
+Backend Isolated Run
+To run and test the backend service independently:
+
+Bash
 cd backend
-docker build -t yourname/ecommerce-backend:1.0 .
+docker build -t fiemayaregalbelie21/ecommerce-backend:1.0 .
 docker run -d -p 4000:4000 \
   -e DB_HOST=host.docker.internal \
-  -e DB_USER=postgres -e DB_PASSWORD=postgres -e DB_NAME=ecommerce \
-  yourname/ecommerce-backend:1.0
-```
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=postgres \
+  -e DB_NAME=ecommerce \
+  fiemayaregalbelie21/ecommerce-backend:1.0
+Optimization & Build Context
+Both services utilize multi-stage builds and strict .dockerignore rules to exclude unneeded development dependencies (such as local node_modules and .git trees) from the daemon build context, significantly reducing overall image sizes and speeding up build times.
 
-## Image size comparison (Step 3)
+To inspect the image footprint difference:
 
-To reproduce the before/after `.dockerignore` comparison for your submission:
-```bash
-# With .dockerignore in place (current state)
-docker build -t backend:with-ignore ./backend
-docker images backend:with-ignore
+Bash
+# Optimized build context
+docker build -t backend:optimized ./backend
+docker images backend:optimized
 
-# Temporarily rename .dockerignore, rebuild, compare
+# Unoptimized build context test
 mv backend/.dockerignore backend/.dockerignore.bak
-docker build -t backend:without-ignore ./backend
-docker images backend:without-ignore
+docker build -t backend:unoptimized ./backend
+docker images backend:unoptimized
 mv backend/.dockerignore.bak backend/.dockerignore
-```
-Record both sizes in your submission — excluding `node_modules`/`.git` from the build
-context keeps the image smaller and the build faster, since Docker doesn't need to hash
-and send those files to the daemon.
+Continuous Integration & Deployment (CI/CD)
+The repository uses GitHub Actions (.github/workflows/ci-cd.yml) to enforce build reliability:
 
-## Publishing to Docker Hub (Step 5)
-**Live image:** https://hub.docker.com/repository/docker/fiemayaregalbelie21/ecommerce-backend
-Manual:
-```bash
-docker login
-docker tag ecommerce-backend:ci yourname/ecommerce-backend:1.0
-docker push yourname/ecommerce-backend:1.0
-```
-Automated: push to `main` with `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` set as repo
-secrets, and the `publish` job in the CI/CD workflow does this for you.
+Test Environment: Provisions an ephemeral PostgreSQL service container on push or pull request.
 
-## CI/CD pipeline (Step 6)
+Database Verification: Applies migration scripts (001_init.sql) and runs npm test.
 
-On every push/PR, `.github/workflows/ci-cd.yml`:
-1. Spins up a real Postgres service container.
-2. Installs backend deps and applies the schema.
-3. Runs the test suite (`npm test`) against that real database.
-4. Validates the backend Docker image builds successfully.
-5. On pushes to `main` only, builds and publishes the backend image to Docker Hub.
+Container Validation: Verifies multi-stage Docker builds complete without errors.
+
+Registry Push: On merges to main, automatically builds and publishes tagged images to Docker Hub (fiemayaregalbelie21/ecommerce-backend).
